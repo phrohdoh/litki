@@ -1,0 +1,74 @@
+{:commands
+ [{:name "litki.commands/echo"
+   :description "Simple echo command that returns the provided argument unchanged"
+   :parameters [{:name "value",
+                 :type :any
+                 :required true
+                 :description "Any value to echo back"}]
+   :return-type [:any]
+   :examples ["(litki.commands/echo :hello)"]}
+  {:name "litki.commands/stable-ids"
+   :description "Returns a list of all entity IDs currently in the ECS world"
+   :parameters []
+   :return-type :vector
+   :examples ["(litki.commands/stable-ids)"]}
+  {:name "litki.commands/get-template-names"
+   :description "Returns a list of all registered template names"
+   :parameters []
+   :return-type [:vector]
+   :examples ["(litki.commands/get-template-names)"]}
+  {:name "litki.commands/get-template"
+   :description "Returns the template definition for a specified template name"
+   :parameters [{:name "template-name"
+                 :type [:or :string :keyword :symbol]
+                 :required true
+                 :description "Name of the template to retrieve"}]
+   :return-type :map
+   :examples ["(litki.commands/get-template :deer)"]}
+  {:name "litki.commands/register-template"
+   :description "Registers a new template for entity spawning"
+   :parameters [{:name "template-name"
+                 :type [:or :string :keyword :symbol]
+                 :required true
+                 :description "Name of the template to register"},
+                {:name "template",
+                 :type :vector,
+                 :required true,
+                 :description "Vector of component definitions: [:template-name ,,,]"}]
+   :return-type :boolean
+   :examples ["(litki.commands/register-template :deer [[:litki.sprite/file \"deer.png\"] [:litki.vital/health {:max 150}]])"]}
+  {:name "litki.commands/spawn"
+   :description "Spawns a new entity using the specified template"
+   :parameters [{:name "template-name"
+                 :type [:or :string :keyword :symbol]
+                 :required true
+                 :description "Name of the template to use for spawning"}]
+   :return-type :integer
+   :examples ["(litki.commands/spawn :deer)"]}
+  {:name "litki.commands/query-entities-with-health"
+   :description "Returns a list of all entities that have a Health component, including their current health values"
+   :parameters []
+   :return-type :vector
+   :examples ["(litki.commands/query-entities-with-health)"]}
+  {:name "litki.commands/inflict-damage"
+   :description "Inflicts damage to a specific entity with a Health component"
+   :parameters [{:name "entity-id"
+                 :type :integer
+                 :required true
+                 :description "ID of the entity to damage"},
+                {:name "damage-amount"
+                 :type :integer
+                 :required true
+                 :description "Amount of damage to inflict (negative to heal)"}]
+   :return-type :boolean
+   :examples ["(litki.commands/inflict-damage 123 10)"]}
+  {:name "litki.commands/get-component-names"
+   :description "Returns a list of all registered component builder names"
+   :parameters []
+   :return-type :vector
+   :examples ["(litki.commands/get-component-names)"]}]
+ :metadata
+ {:version 1
+  :description "Schema specification for litki REPL commands"
+  :format "EDN"
+  :created "2026-Apr-26"}}

@@ -1,0 +1,417 @@
+use std::sync::Arc;
+use bevy::prelude::*;
+use bevy::log;
+use jinme::{prelude::*, value::Value, value::optics as value_optics, vector::optics as vector_optics};
+use litki::plugins::EntityRegistry;
+use litki::plugins::Health;
+use litki::plugins::StableId;
+use litki::prelude::*;
+use litki::script::Command as _;
+use litki::script::CommandResult;
+use litki::{ComponentBuilderRegistry, TemplateRegistry, AnimationRegistry};
+use litki::script::{CommandRegistry, closure_factory};
+
+fn main() {
+    println!("Launching Scenario 1");
+    run_scenario();
+}
+
+fn run_scenario() {
+    App::new()
+        .add_plugins(DefaultPlugins.set(WindowPlugin {
+            primary_window: Some(Window {
+                title: "RTS Game Engine - Scenario 1 (Wildlife)".into(),
+                resolution: (1280, 720).into(),
+                ..default()
+            }),
+            ..default()
+        }))
+        .add_plugins(EnginePlugin)
+        .add_plugins(ReplServerPlugin)
+        .add_plugins(Scenario1Plugin)
+        .run();
+}
+
+struct Scenario1Plugin;
+
+impl Plugin for Scenario1Plugin {
+    fn build(&self, app: &mut App) {
+        // Add systems and resources specific to Scenario 1 here
+        app.insert_resource({
+                let command_registry = CommandRegistry::new();
+
+                command_registry.register("litki.commands/echo",
+                    closure_factory(|args| Ok(litki::script::command_fn(
+                        |_| Ok(()),
+                        move |_| CommandResult::Success((&args[0]).to_owned()),
+                    ).boxed())),
+                );
+
+                fn normalize_template_name(name: &Value) -> Result<String, Value> {
+                    Ok(match name {
+                        Value::String(name, _) => name.to_owned(),
+                        Value::Symbol(Symbol::Unqualified(name), _) => name.name().to_owned(),
+                        Value::Keyword(Keyword::Unqualified(name), _) => name.name().to_owned(),
+                        Value::Symbol(Symbol::Qualified(name), _) => name.namespace().to_owned() + "/" + name.name(),
+                        Value::Keyword(Keyword::Qualified(name), _) => name.namespace().to_owned() + "/" + name.name(),
+                        _ => return Err(Value::vector_from(vec![
+                            Value::keyword_unqualified_ptr("invalid-template-name"),
+                            name.to_owned().into_value_ptr(),
+                        ])),
+                    })
+                }
+
+                fn normalize_component_name(name: &Value) -> Result<String, Value> {
+                    Ok(match name {
+                        Value::String(name, _) => name.to_owned(),
+                        Value::Symbol(Symbol::Unqualified(name), _) => name.name().to_owned(),
+                        Value::Keyword(Keyword::Unqualified(name), _) => name.name().to_owned(),
+                        Value::Symbol(Symbol::Qualified(name), _) => name.namespace().to_owned() + "/" + name.name(),
+                        Value::Keyword(Keyword::Qualified(name), _) => name.namespace().to_owned() + "/" + name.name(),
+                        _ => return Err(Value::vector_from(vec![
+                            Value::keyword_unqualified_ptr("invalid-component-name"),
+                            name.to_owned().into_value_ptr(),
+                        ])),
+                    })
+                }
+
+                command_registry.register("litki.commands/register-template",
+                    closure_factory(|args| Ok(litki::script::command_fn(
+                        |_| Ok(()),
+                        move |world| CommandResult::Success({
+                            let template_name = normalize_template_name(&args[0]).unwrap();
+                            let template = &args[1];
+                            let template_registry = world.resource::<TemplateRegistry>();
+                            template_registry.register(template_name.clone(), template.to_owned());
+                            Value::string_ptr(template_name)
+                        }),
+                    ).boxed())),
+                );
+
+                command_registry.register("litki.commands/get-component-names",
+                    closure_factory(|_args| Ok(litki::script::command_fn(
+                        |_| Ok(()),
+                        |world| CommandResult::Success({
+                            let component_builder_registry = world.resource::<ComponentBuilderRegistry>();
+                            let component_names = component_builder_registry.names();
+                            Arc::new(Value::vector_from(component_names.iter().map(|s| Value::string_ptr(s.to_owned())).collect()))
+                        }),
+                    ).boxed())),
+                );
+
+                command_registry.register("litki.commands/get-template-names",
+                    closure_factory(|_args| Ok(litki::script::command_fn(
+                        |_| Ok(()),
+                        |world| CommandResult::Success({
+                            let template_registry = world.resource::<TemplateRegistry>();
+                            let template_names = template_registry.names();
+                            Arc::new(Value::vector_from(template_names.iter().map(|s| Value::string_ptr(s.to_owned())).collect()))
+                        }),
+                    ).boxed())),
+                );
+
+                command_registry.register("litki.commands/get-template",
+                    closure_factory(|args| Ok(litki::script::command_fn(
+                        |_| Ok(()),
+                        move |world| {
+                            CommandResult::Success({
+                                let template_name = normalize_template_name(&args[0]).unwrap();
+                                let template_registry = world.resource::<TemplateRegistry>();
+                                let template = match template_registry.get(template_name.as_str()) {
+                                    Some(template) => value_optics::preview_vector(&template).unwrap(),
+                                    _ => return CommandResult::Error(Value::vector_from(vec![
+                                            Value::keyword_unqualified_ptr("unknown-template"),
+                                            Value::string_ptr(template_name),
+                                        ]).into()),
+                                };
+                                Value::vector(template).into()
+                            })
+                        },
+                    ).boxed())),
+                );
+
+                command_registry.register("litki.commands/stable-ids",
+                    closure_factory(|_args| Ok(litki::script::command_fn(
+                        |_| Ok(()),
+                        |world| CommandResult::Success({
+                            Into::<Vector>::into(
+                                world.query::<&StableId>().iter(world)
+                                    .map(StableId::to_value)
+                                    .map(Value::into_value_ptr)
+                                    .collect::<Vec<_>>()
+                            ).into_value_ptr()
+                        }),
+                    ).boxed())),
+                );
+
+                command_registry.register("litki.commands/query-entities-with-health", closure_factory(|_args| {
+                    Ok(litki::script::command_fn(
+                        |_| Ok(()),
+                        move |world| {
+                            let entities_with_health = world.query::<(&StableId, &Health)>()
+                                .iter(world)
+                                .map(|(stable_id, health)| Arc::new(Value::map_from(vec![
+                                    (Value::keyword_unqualified_ptr("stable-id"), stable_id.to_value_ptr()),
+                                    (Value::keyword_unqualified_ptr("health"), Value::integer_ptr(health.cur() as i64)),
+                                ])))
+                                .collect::<Vec<_>>();
+                            CommandResult::Success(Arc::new(Value::vector_from(entities_with_health)))
+                        }
+                    ).boxed())
+                }));
+
+                command_registry.register("litki.commands/spawn", closure_factory(|args| {
+                    Ok(litki::script::command_fn(
+                        {
+                            let args = args.clone();
+                            move |_world| if args.is_empty() { Err("No arguments provided".into()) } else { Ok(()) }
+                        },
+                        move |world| {
+                            let template = {
+                                let template_registry = world.resource::<TemplateRegistry>();
+                                let template_name = normalize_template_name(&args[0]).unwrap();
+                                let template = match template_registry.get(template_name.as_str()) {
+                                    Some(template) => value_optics::preview_vector(&template).unwrap(),
+                                    _ => return CommandResult::Error(Value::vector_from(vec![
+                                            Value::keyword_unqualified_ptr("unknown-template"),
+                                            Value::string_ptr(template_name),
+                                        ]).into()),
+                                };
+                                template
+                            };
+
+                            let mut component_errors = Vec::new();
+                            let components = {
+                                let component_builder_registry = world.resource::<ComponentBuilderRegistry>();
+                                let mut components = Vec::new();
+                                for component_val in template.iter() {
+                                    let component_vect = value_optics::preview_vector(&component_val).unwrap();
+                                    let component_name = normalize_component_name(&component_vect.get_first_or_panic()).unwrap();
+                                    let component_opts = component_vect.collect_rest::<Vec<_>>();
+                                    match component_builder_registry.get(component_name.as_str()) {
+                                        Some(component_builder) => {
+                                            components.push((
+                                                component_name,
+                                                component_builder,
+                                                component_opts,
+                                            ));
+                                        },
+                                        _ => {
+                                            component_errors.push(Value::vector_from(vec![
+                                                Value::keyword_unqualified_ptr("unknown-component"),
+                                                Value::string_ptr(component_name),
+                                            ]).into_value_ptr());
+                                        },
+                                    }
+                                }
+                                components
+                            };
+
+                            if !component_errors.is_empty() {
+                                return CommandResult::Error(
+                                    Value::vector_from(component_errors).into()
+                                );
+                            }
+
+                            let mut entity = world.spawn_empty();
+                            let entity_id = entity.id();
+
+                            // assign StableId
+                            let stable_id = StableId::new_random();
+                            entity.insert(stable_id.clone());
+
+                            for (component_name, component_builder, component_opts) in components {
+                                log::info!("Creating component '{}' with args {}", component_name, jinme::value::Value::list_from(component_opts.clone()));
+                                component_builder.build(&mut entity, component_opts).unwrap();
+                            }
+
+                            let entity_registry = world.resource_mut::<EntityRegistry>();
+                            entity_registry.register(stable_id.clone(), entity_id);
+
+                            CommandResult::Success(Value::string_ptr(stable_id.to_string()))
+                        }
+                    ).boxed())
+                }));
+
+                command_registry.register("litki.commands/inflict-damage", closure_factory(|args| {
+                    Ok(litki::script::command_fn(
+                        {
+                            let args = args.clone();
+                            move |_world| if args.is_empty() { Err("No arguments provided".into()) } else { Ok(()) }
+                        },
+                        move |world| {
+                            let stable_id = value::optics::preview_string(args.get(0).unwrap()).unwrap();
+                            let stable_id = StableId::try_from_string(stable_id.clone()).unwrap();
+                            let damage = value::optics::preview_integer(args.get(1).unwrap()).unwrap();
+
+                            let entity_registry = world.resource::<EntityRegistry>();
+                            let entity_id = entity_registry.get_by_stable_id(&stable_id).unwrap();
+
+                            let mut entity = world.entity_mut(entity_id);
+                            let health = entity.get_mut::<Health>();
+
+                            if let Some(mut health) = health {
+                                let ante_cur = health.cur();
+                                health.take_damage(damage);
+                                let post_cur = health.cur();
+                                log::info!("Inflicted {} damage to entity {}, health went from {} to {}", damage, stable_id.as_str(), ante_cur, post_cur);
+                                CommandResult::Success(Value::integer_ptr(post_cur as i64))
+                            } else {
+                                CommandResult::Error(Value::string_ptr(format!("Entity {} does not have Health component", stable_id.as_str())))
+                            }
+                        }
+                    ).boxed())
+                }));
+
+                command_registry
+            })
+           .add_systems(Startup, (
+               setup_world,
+               load_scenario_data,
+           ).chain())
+           .add_systems(Update, (
+                update_unit_movement,
+                update_animation_timers,
+                //print_state.run_if(on_timer(Duration::from_secs(1))),
+            ).chain())
+           ;
+    }
+}
+
+fn setup_world(
+    mut commands: Commands,
+    assets: Res<AssetServer>,
+) {
+    log::info!("Setting up the world for Scenario 1...");
+
+    // Spawn 2D orthographic camera
+    // This camera renders the game world. The transform puts it at z=100
+    // so it looks down at the z=0 plane where entities are positioned.
+    commands.spawn(Camera2d);
+    //let camera = Camera2dBundle {
+    //    transform: Transform::from_xyz(640.0, 360.0, 100.0),
+    //    projection: OrthographicProjection {
+    //        far: 1000.0,
+    //        near: -1000.0,
+    //        ..default()
+    //    },
+    //    ..default()
+    //};
+    //log::info!("✓ Camera spawned at (640, 360, 100)");
+    log::info!("✓ Camera spawned");
+
+    // Spawn background sprite (simple colored rectangle)
+    //let background = SpriteBundle {
+    //    sprite: Sprite {
+    //        color: Color::rgb(0.1, 0.1, 0.15),
+    //        custom_size: Some(Vec2::new(1280.0, 720.0)),
+    //        ..default()
+    //    },
+    //    transform: Transform::from_xyz(640.0, 360.0, -10.0),
+    //    ..default()
+    //};
+    //commands.spawn(background);
+    commands.spawn(Sprite {
+        image: assets.load("sprites/background.png"),
+        ..default()
+    });
+    log::info!("✓ Background sprite spawned");
+
+    // Spawn grid lines for visualization (helps see unit positions)
+    //spawn_grid_lines(&mut commands);
+    //log::info!("✓ Grid visualization spawned");
+
+    // Spawn UI text (will be updated by print_state system)
+    spawn_ui_text(&mut commands, &assets);
+    log::info!("✓ UI text canvas spawned");
+
+    log::info!("✓ World setup complete!");
+}
+
+// /// Spawn grid visualization lines to help debug unit positioning
+// fn spawn_grid_lines(commands: &mut Commands) {
+//     let grid_size = 100.0;
+//     let world_width = 1280.0;
+//     let world_height = 720.0;
+//
+//     // Vertical lines
+//     let mut x = 0.0;
+//     while x < world_width {
+//         commands.spawn(LineBundle {
+//             line: Line {
+//                 start: Vec2::new(x, 0.0),
+//                 end: Vec2::new(x, world_height),
+//                 width: 1.0,
+//                 color: Color::rgb(0.2, 0.2, 0.2),
+//             },
+//             transform: Transform::from_xyz(0.0, 0.0, 0.0),
+//             ..default()
+//         });
+//         x += grid_size;
+//     }
+//
+//     // Horizontal lines
+//     let mut y = 0.0;
+//     while y < world_height {
+//         commands.spawn(LineBundle {
+//             line: Line {
+//                 start: Vec2::new(0.0, y),
+//                 end: Vec2::new(world_width, y),
+//                 width: 1.0,
+//                 color: Color::rgb(0.2, 0.2, 0.2),
+//             },
+//             transform: Transform::from_xyz(0.0, 0.0, 0.0),
+//             ..default()
+//         });
+//         y += grid_size;
+//     }
+// }
+
+/// Spawn UI text entity that will display game state
+fn spawn_ui_text(
+    commands: &mut Commands,
+    assets: &AssetServer,
+) {
+    let font = assets.load("fonts/JetBrainsMono-Regular.ttf");
+    commands.spawn((
+        Text::new(
+        "RTS Game Engine - Wildlife Scenario\n\
+         REPL: nc localhost 7888\n\
+         Commands:\n\
+            \t(litki.commands/echo :hi)\n\
+            \t(litki.commands/stable-ids)\n\
+            \t(litki.commands/get-template-names)\n\
+            \t(litki.commands/register-template :deer [[:litki.sprite/file \"deer.png\"] [:litki.vital/health {:max 150}]])\n\
+            \t(litki.commands/spawn :deer)\n"
+        ),
+        TextFont::from(font.clone()).with_font_size(13.0),
+        TextColor(Color::linear_rgb(0.8, 0.8, 0.8)),
+    ));
+}
+
+
+
+fn load_scenario_data(
+    _components: Res<ComponentBuilderRegistry>,
+    _templates: Res<TemplateRegistry>,
+    _animations: Res<AnimationRegistry>,
+) {
+    // Load any necessary data for Scenario 1 here
+    // For example: map data, unit stats, etc.
+    log::info!("Load scenario data for Scenario 1");
+}
+
+fn update_unit_movement() {
+    // Update unit movement logic for Scenario 1 here
+    // For example: pathfinding, collision avoidance, etc.
+}
+
+fn update_animation_timers() {
+    // Update animation timers for Scenario 1 here
+    // For example: handle animation state changes, transitions, etc.
+}
+
+// fn print_state() {
+//     // Print the current state of the game for debugging purposes
+//     log::info!("Current game state: ...");
+// }

@@ -1,0 +1,10 @@
+[package]
+name = "litki-cli"
+version = "0.0.0"
+edition = "2024"
+
+[dependencies]
+bevy = { version = "0.18.1", features = ["debug"] }
+# jinme = { version = "0.0.0", path = "../../../jinme/crates/jinme" }
+jinme = { version = "0.0.0", path = "../jinme" }
+litki = { version = "0.0.0", path = "../litki" }

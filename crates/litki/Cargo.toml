@@ -1,0 +1,16 @@
+[package]
+name = "litki"
+version = "0.0.0"
+edition = "2024"
+
+[dependencies]
+bevy = "0.18.1"
+jinme = { version = "0.0.0", path = "../jinme" }
+crossbeam = "0.8.4"
+parking_lot.workspace = true
+rand = "0.8.5"
+short-id = "0.5.0"
+
+[features]
+default = ["repl_server"]
+repl_server = []

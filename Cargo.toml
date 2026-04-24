@@ -1,0 +1,9 @@
+[workspace]
+resolver = "3"
+members = [
+    "crates/litki",
+    "crates/litki-cli",
+]
+
+[workspace.dependencies]
+parking_lot = "*"
