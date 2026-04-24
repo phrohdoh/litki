@@ -1,0 +1,23 @@
+
+{:templates
+ {:deer [[:litki.vital/health {:max 80}]
+         [:litki.vision/radial {:radius 4}]
+         [:litki.locomotion/ground {:speed 12}]
+         [:litki.startles {:radius 3
+                           :duration 2}]]
+  :boar [[:litki.vital/health {:max 120}]
+         [:litki.vision/radial {:radius 6}]
+         [:litki.locomotion/ground {:speed 8}]
+         [:litki.armament/melee {:damage 4
+                           :range 1}]]
+  :eagle [[:litki.vital/health {:max 60}]
+          [:litki.vision/radial {:radius 10}]
+          [:litki.locomotion/flying {:speed 15
+                                     :max-elevation 8
+                                     :takeoff-sound "screech1"
+                                     :landing-sound "screech2"}]]
+  :berry-bush [[:litki.resource/regrowable {:resource-type :food
+                                            :yield-per-pick 1
+                                            :max 25
+                                            :regrowth-time 5}]]}}
+
